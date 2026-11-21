@@ -1,0 +1,6 @@
+# App icon PNGs are generated during the CI build from
+# .github/icon-1024.b64 (see the "Generate app icons" step in
+# .github/workflows/build-ipa.yml), so they are not committed.
+# To replace the icon, overwrite .github/icon-1024.b64 with the
+# base64 of a 1024x1024 PNG.
+TeslaDash/Assets.xcassets/AppIcon.appiconset/*.png
