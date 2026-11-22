@@ -1,0 +1,87 @@
+# TeslaDash — build without a Mac
+#
+# This workflow builds the app on a GitHub-hosted macOS runner and
+# uploads the unsigned .ipa as a downloadable artifact. Install it on
+# your iPhone with AltStore (AltServer runs on Windows) using a free
+# Apple ID — no Apple Developer account needed.
+#
+# No Mac is needed. Push to `main` (or run manually) and download the
+# .ipa from the Actions run's Artifacts.
+#
+# FUTURE UPGRADE — TestFlight: if you ever get a paid Apple Developer
+# account ($99/yr), uncomment the "TestFlight build" section at the
+# bottom of this file. It signs the build and uploads it to App Store
+# Connect, so the app installs from TestFlight with no weekly refresh
+# and no 3-app limit. Until then it stays commented out and harmless.
+
+name: Build iPA
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-26 # GitHub-hosted cloud Mac with Xcode 26. If this label
+      # ever disappears, switch to `macos-latest`.
+    steps:
+      - uses: actions/checkout@v4
+
+      # App icons are binary PNGs and live in this repo only as a
+      # base64 text file (.github/icon-1024.b64). Generate all 9
+      # sizes from it before the build so the asset catalog compiles.
+      - name: Generate app icons
+        run: |
+          ICON_DIR="TeslaDash/Assets.xcassets/AppIcon.appiconset"
+          base64 --decode .github/icon-1024.b64 > "$ICON_DIR/icon-1024.png"
+          sips -s format png --resampleWidth 80  "$ICON_DIR/icon-1024.png" --out "$ICON_DIR/icon-40@2x.png"
+          sips -s format png --resampleWidth 120 "$ICON_DIR/icon-1024.png" --out "$ICON_DIR/icon-40@3x.png"
+          sips -s format png --resampleWidth 120 "$ICON_DIR/icon-1024.png" --out "$ICON_DIR/icon-60@2x.png"
+          sips -s format png --resampleWidth 180 "$ICON_DIR/icon-1024.png" --out "$ICON_DIR/icon-60@3x.png"
+          sips -s format png --resampleWidth 40  "$ICON_DIR/icon-1024.png" --out "$ICON_DIR/icon-20@2x.png"
+          sips -s format png --resampleWidth 60  "$ICON_DIR/icon-1024.png" --out "$ICON_DIR/icon-20@3x.png"
+          sips -s format png --resampleWidth 58  "$ICON_DIR/icon-1024.png" --out "$ICON_DIR/icon-29@2x.png"
+          sips -s format png --resampleWidth 87  "$ICON_DIR/icon-1024.png" --out "$ICON_DIR/icon-29@3x.png"
+
+      - name: Select Xcode 26
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Resolve Swift packages
+        run: >
+          xcodebuild -resolvePackageDependencies
+          -project TeslaDash.xcodeproj
+          -scheme TeslaDash
+
+      # Unsigned archive — AltStore re-signs the .ipa on the phone with
+      # your free Apple ID, so no Developer account or certificate is
+      # needed at build time.
+      - name: Archive (unsigned)
+        run: >
+          xcodebuild archive
+          -project TeslaDash.xcodeproj
+          -scheme TeslaDash
+          -configuration Release
+          -destination "generic/platform=iOS"
+          -archivePath build/TeslaDash-unsigned.xcarchive
+          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_REQUIRED=NO
+          CODE_SIGN_IDENTITY=""
+
+      - name: Package unsigned .ipa
+        run: |
+          mkdir -p build/Payload
+          cp -R build/TeslaDash-unsigned.xcarchive/Products/Applications/TeslaDash.app build/Payload/
+          cd build && zip -r TeslaDash-unsigned.ipa Payload
+
+      - name: Upload .ipa (install with AltStore)
+        uses: actions/upload-artifact@v4
+        with:
+          name: TeslaDash-unsigned.ipa
+          path: build/TeslaDash-unsigned.ipa
+          retention-days: 30
